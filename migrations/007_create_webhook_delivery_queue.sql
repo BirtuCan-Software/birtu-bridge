@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS webhook_delivery_queue (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tx_ref VARCHAR(191) NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  app_id CHAR(36) NOT NULL,
+  payload JSON NOT NULL,
+  status ENUM('PENDING', 'RETRYING', 'DELIVERED', 'FAILED_DLQ') NOT NULL DEFAULT 'PENDING',
+  attempt_count INT NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_delivery_app FOREIGN KEY (app_id) REFERENCES applications(id) ON DELETE CASCADE,
+  UNIQUE KEY uniq_tx_event (tx_ref, event_type),
+  INDEX idx_delivery_status_next (status, next_attempt_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

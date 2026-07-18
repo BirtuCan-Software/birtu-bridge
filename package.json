@@ -1,0 +1,28 @@
+{
+  "name": "birtu-bridge",
+  "version": "1.0.0",
+  "description": "Payment proxy gateway for Chapa - Fastify + MySQL",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "reconcile": "node scripts/run-reconciler.js",
+    "deliver": "node scripts/run-delivery-worker.js",
+    "digest": "node scripts/run-dlq-digest.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "mysql2": "^3.11.0",
+    "nodemailer": "^9.0.3",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

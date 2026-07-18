@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS applications (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  environment ENUM('sandbox', 'production') NOT NULL DEFAULT 'sandbox',
+  webhook_url VARCHAR(512) NULL,
+  status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

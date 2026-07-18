@@ -1,0 +1,7 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/your_cpanel_username/birtu-bridge
+    - /bin/cp -R * $DEPLOYPATH
+    - cd $DEPLOYPATH && npm install --omit=dev
+    - cd $DEPLOYPATH && npm run migrate
