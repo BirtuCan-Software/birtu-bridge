@@ -13,6 +13,7 @@ const dashboardUiRoutes = require('./routes/ui/dashboard');
 const applicationsUiRoutes = require('./routes/ui/applications');
 const transactionsUiRoutes = require('./routes/ui/transactions');
 const dlqUiRoutes = require('./routes/ui/dlq');
+const docsUiRoutes = require('./routes/ui/docs');
 
 const fastify = require('fastify')({
   trustProxy: config.env === 'production',
@@ -103,6 +104,7 @@ async function start() {
     fastify.register(applicationsUiRoutes);
     fastify.register(transactionsUiRoutes);
     fastify.register(dlqUiRoutes);
+    fastify.register(docsUiRoutes);
 
     await fastify.listen({ port: config.port, host: '0.0.0.0' });
     console.log(`birtu-bridge listening on port ${config.port}`);

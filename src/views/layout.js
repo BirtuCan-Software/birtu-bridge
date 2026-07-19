@@ -7,6 +7,7 @@ function renderLayout({ title, bodyHtml, activeNav, flash }) {
     { href: '/ui/applications', label: 'Applications', key: 'applications' },
     { href: '/ui/transactions', label: 'Transactions', key: 'transactions' },
     { href: '/ui/dlq', label: 'Delivery Failures', key: 'dlq' },
+    { href: '/ui/docs', label: 'Docs', key: 'docs' },
   ];
 
   const navHtml = navItems
