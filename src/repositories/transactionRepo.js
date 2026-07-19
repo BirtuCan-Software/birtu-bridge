@@ -138,8 +138,6 @@ async function markSupersededOrphaned(transactionId, chapaVerifyPayload) {
   );
 }
 
-// ---- Reconciler sweep queries ----
-
 async function getStaleForwarding(minutesOld) {
   const [rows] = await pool.query(
     `SELECT * FROM transactions
@@ -219,6 +217,59 @@ async function annotateConfirmedOrphan(transactionId, detail) {
   );
 }
 
+async function listTransactions({ status, search, limit, offset }) {
+  const params = { limit, offset };
+  const clauses = [];
+  if (status) {
+    clauses.push('t.status = :status');
+    params.status = status;
+  }
+  if (search) {
+    clauses.push('(t.client_order_id LIKE :search OR t.chapa_tx_ref LIKE :search)');
+    params.search = `%${search}%`;
+  }
+  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  const [rows] = await pool.query(
+    `SELECT t.id, t.client_order_id, t.attempt_count, t.status, t.amount, t.currency, t.created_at, t.chapa_tx_ref, a.name AS app_name
+     FROM transactions t
+     JOIN applications a ON a.id = t.app_id
+     ${whereClause}
+     ORDER BY t.created_at DESC
+     LIMIT :limit OFFSET :offset`,
+    params
+  );
+  return rows;
+}
+
+async function countTransactions({ status, search }) {
+  const params = {};
+  const clauses = [];
+  if (status) {
+    clauses.push('status = :status');
+    params.status = status;
+  }
+  if (search) {
+    clauses.push('(client_order_id LIKE :search OR chapa_tx_ref LIKE :search)');
+    params.search = `%${search}%`;
+  }
+  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM transactions ${whereClause}`,
+    params
+  );
+  return rows[0]?.count || 0;
+}
+
+async function countTransactionsByApp(appId) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM transactions WHERE app_id = :appId`,
+    { appId }
+  );
+  return rows[0]?.count || 0;
+}
+
 module.exports = {
   getLatestAttempt,
   getById,
@@ -241,4 +292,7 @@ module.exports = {
   getUnresolvedSuperseded,
   markAbortedIfSuperseded,
   annotateConfirmedOrphan,
+  listTransactions,
+  countTransactions,
+  countTransactionsByApp,
 };

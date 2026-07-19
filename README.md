@@ -1,6 +1,6 @@
 # Birtu Bridge
 
-A resilient payment proxy gateway for [Chapa](https://chapa.co), built with Fastify and MySQL, purpose-designed to run reliably on constrained shared hosting (cPanel/Passenger).
+A resilient payment proxy gateway for [Chapa](https://chapa.co), built with Fastify and MySQL, purpose-designed to run reliably on constrained shared hosting (cPanel/Passenger). Includes a browser-based admin UI for managing applications, monitoring transactions, and resolving delivery failures.
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
 [![Framework](https://img.shields.io/badge/framework-Fastify-black)](https://fastify.dev)
@@ -39,6 +39,7 @@ This service treats every payment as a strict state machine with write-ahead int
 - A polling reconciler that acts as the ultimate source of truth, independent of webhook delivery
 - A self-healing circuit breaker so a Chapa outage can't exhaust your available worker processes
 - Strict connection discipline so nothing ever holds a database connection open across a network call
+- A browser-based admin UI with session auth, CSRF protection, and MySQL-backed session storage (survives Passenger worker recycling without logging you out)
 
 ## Architecture at a Glance
 
@@ -104,6 +105,26 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Paste the output into `ADMIN_TOKEN` in your `.env`.
 
+Generate a session secret for the admin UI:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Paste the output into `SESSION_SECRET` in your `.env`.
+
+Build the precompiled Tailwind CSS stylesheet (required for the admin UI to render correctly):
+
+```bash
+npm run build:css
+```
+
+Create the first admin user for the browser-based management UI:
+
+```bash
+npm run create-admin your-email@example.com "a-strong-password-at-least-12-chars"
+```
+
 ## Environment Variables
 
 | Variable | Required | Where to get it | Notes |
@@ -137,6 +158,10 @@ Paste the output into `ADMIN_TOKEN` in your `.env`.
 | `DELIVERY_TIMEOUT_MS` | No | — | Timeout for outbound delivery calls to client app webhook URLs |
 | `ALERT_EMAIL_TO` | No | Your own email address | Destination for the DLQ digest alert email |
 | `ALERT_EMAIL_FROM` | No | — | From-address for digest emails, sent via local sendmail |
+| `SESSION_SECRET` | Yes | Generate locally (see above) | Secret key for signed admin session cookies |
+| `SESSION_COOKIE_NAME` | No | — | Cookie name for the admin session; defaults to `birtu_admin_sid` |
+| `SESSION_TTL_HOURS` | No | — | Admin session lifetime in hours; defaults to `12` |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | No | — | Failed login attempts per minute before the rate limiter kicks in; defaults to `5` |
 
 Do not commit your real `.env` file. Only `.env.example` should be tracked in version control.
 
@@ -152,10 +177,18 @@ This creates all required tables and records applied migrations in `schema_migra
 
 ## Running the App
 
-Development, with auto-reload:
+Rebuild the CSS if you've added new Tailwind classes (required after editing any view file):
+
+```bash
+npm run build:css
+```
+
+For active development with auto-reload and CSS watch:
 
 ```bash
 npm run dev
+# In a separate terminal:
+npm run watch:css
 ```
 
 Production:
@@ -176,6 +209,14 @@ Expected response:
 {"status":"ok","db":"connected"}
 ```
 
+Open the admin UI in your browser:
+
+```
+http://localhost:3000/ui
+```
+
+You'll be redirected to the login screen. Sign in with the credentials from the `create-admin` step.
+
 ## Background Jobs (Cron)
 
 Three scripts must run on a schedule for the system to be fully self-healing. Locally you can invoke them manually; in production these belong in cron (see [Deploying to cPanel](#deploying-to-cpanel)).
@@ -190,7 +231,9 @@ All three scripts self-lock via a database-backed, expiring lock table, so overl
 
 ## API Overview
 
-All application-facing routes require `Authorization: Bearer <api_key>`. Admin routes require `x-admin-token: <ADMIN_TOKEN>`.
+All application-facing routes require `Authorization: Bearer <api_key>`. Admin JSON API routes require `x-admin-token: <ADMIN_TOKEN>`. All UI routes require a valid session cookie (obtained via the login form).
+
+### JSON API (machine-to-machine)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -203,6 +246,29 @@ All application-facing routes require `Authorization: Bearer <api_key>`. Admin r
 | `POST` | `/v1/transactions/initialize` | Initialize a payment; idempotent per `clientOrderId` |
 | `POST` | `/v1/webhooks/chapa` | Inbound webhook receiver (called by Chapa, not by client apps) |
 
+### Admin UI (browser, session-auth)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/ui/login` | Login page |
+| `POST` | `/ui/login` | Submit credentials |
+| `POST` | `/ui/logout` | Destroy session |
+| `GET` | `/ui` | Dashboard — gateway status, DLQ count, recent transactions |
+| `GET` | `/ui/applications` | List + search applications, create new |
+| `POST` | `/ui/applications` | Create application |
+| `GET` | `/ui/applications/:appId` | Detail — API keys, redirect whitelist, webhook URL, lifecycle controls |
+| `POST` | `/ui/applications/:appId/api-keys` | Issue API key (shown once with copy button) |
+| `POST` | `/ui/applications/:appId/api-keys/:keyId/revoke` | Revoke API key |
+| `POST` | `/ui/applications/:appId/redirect-whitelist` | Add redirect domain |
+| `POST` | `/ui/applications/:appId/webhook-url` | Update webhook delivery URL |
+| `POST` | `/ui/applications/:appId/archive` | Archive (soft-delete) an application |
+| `POST` | `/ui/applications/:appId/reactivate` | Reactivate an archived application |
+| `POST` | `/ui/applications/:appId/delete` | Permanently delete an application with no transaction history |
+| `GET` | `/ui/transactions` | List + filter + search transactions |
+| `GET` | `/ui/transactions/:transactionId` | Transaction detail — full payload, errors, checkout URL |
+| `GET` | `/ui/dlq` | List delivery failures |
+| `POST` | `/ui/dlq/:deliveryId/retry` | Re-queue a failed delivery for retry |
+
 ## Project Structure
 
 ```
@@ -210,20 +276,34 @@ birtu-bridge/
 ├── app.js                     # cPanel/Passenger entry point
 ├── migrations/                # Versioned SQL schema migrations
 ├── scripts/
+│   ├── create-admin-user.js   # CLI bootstrap for the first admin account
 │   ├── migrate.js
 │   ├── run-reconciler.js
 │   ├── run-delivery-worker.js
 │   └── run-dlq-digest.js
 ├── src/
+│   ├── auth/                   # Password hashing and MySQL session store
 │   ├── clients/                # Chapa HTTP client
 │   ├── config/                 # Environment-driven configuration
 │   ├── db/                     # Shared MySQL connection pool
-│   ├── middleware/              # Auth and gateway-entry hooks
-│   ├── repositories/            # Database access layer
-│   ├── routes/                  # Fastify route definitions
-│   ├── services/                # Business logic and state machine
-│   ├── utils/                   # Crypto, sleep, mailer helpers
-│   └── server.js                 # Fastify app definition and bootstrap
+│   ├── middleware/              # Auth, gateway-entry hooks, session requireAuth
+│   ├── public/                 # Static assets (compiled CSS, JS)
+│   ├── repositories/           # Database access layer
+│   ├── routes/
+│   │   ├── ui/                 # Admin UI route handlers (auth, dashboard, apps, txns, dlq)
+│   │   ├── admin.js
+│   │   ├── ping.js
+│   │   ├── transactions.js
+│   │   └── webhooks.js
+│   ├── services/               # Business logic and state machine
+│   ├── styles/                 # Tailwind CSS source input
+│   ├── utils/                  # Crypto, sleep, mailer, html escaping, flash messages
+│   ├── views/
+│   │   ├── pages/              # One render function per page
+│   │   ├── badges.js           # Centralized badge color classes
+│   │   └── layout.js           # Shared page shell (nav, flash messages)
+│   └── server.js               # Fastify app definition and bootstrap
+├── tailwind.config.js
 ├── .env.example
 └── package.json
 ```
@@ -233,14 +313,19 @@ birtu-bridge/
 1. Push this repository to your cPanel account, either via Git Version Control (using the included `.cpanel.yml`) or by uploading the files directly.
 2. In cPanel's **Setup Node.js App**, create an application pointing its startup file at `app.js`, using Node.js 18 or later.
 3. Add every variable from the [Environment Variables](#environment-variables) table in the app's environment variable panel — cPanel manages these independently of any `.env` file on disk.
-4. Activate the app's virtual environment and run the install and migration commands once:
+4. Activate the app's virtual environment and run the install, build, and migration commands once:
    ```bash
    source /home/USERNAME/nodevenv/birtu-bridge/18/bin/activate && cd /home/USERNAME/birtu-bridge
    npm install --omit=dev
+   npm run build:css
    npm run migrate
    ```
-5. Restart the application from the Node.js App Manager.
-6. Set your Chapa webhook callback URL to `https://your-domain.com/v1/webhooks/chapa`.
+5. Create the first admin user for the browser UI:
+   ```bash
+   npm run create-admin your-email@example.com "a-strong-password-at-least-12-chars"
+   ```
+6. Restart the application from the Node.js App Manager.
+7. Set your Chapa webhook callback URL to `https://your-domain.com/v1/webhooks/chapa`.
 7. Add the three background jobs from the [Background Jobs](#background-jobs-cron) table as cron jobs, each using the same `nodevenv` activation prefix.
 
 ## Troubleshooting

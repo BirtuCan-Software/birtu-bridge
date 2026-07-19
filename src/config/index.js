@@ -52,8 +52,6 @@ const config = {
     perMinutePerIp: parseInt(process.env.RATE_LIMIT_PER_MINUTE_PER_IP || '20', 10),
   },
 
-  publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3000',
-
   webhookSignatureHeader: process.env.CHAPA_WEBHOOK_SIGNATURE_HEADER || 'Chapa-Signature',
 
   delivery: {
@@ -66,6 +64,16 @@ const config = {
     emailTo: process.env.ALERT_EMAIL_TO || '',
     emailFrom: process.env.ALERT_EMAIL_FROM || 'no-reply@birtu-bridge.local',
   },
+
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3000',
+
+  session: {
+    secret: requireEnv('SESSION_SECRET'),
+    cookieName: process.env.SESSION_COOKIE_NAME || 'birtu_admin_sid',
+    ttlHours: parseInt(process.env.SESSION_TTL_HOURS || '12', 10),
+  },
+
+  loginRateLimitPerMinute: parseInt(process.env.LOGIN_RATE_LIMIT_PER_MINUTE || '5', 10),
 };
 
 module.exports = config;
